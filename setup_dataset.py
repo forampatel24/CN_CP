@@ -1,31 +1,25 @@
 import os
 import subprocess
-import sys
 
-DATA_PATH = "data/cicids2017_cleaned.csv"
+DATASET = "ericanacletoribeiro/cicids2017-cleaned-and-preprocessed"
+DATA_FOLDER = "data"
+
+KAGGLE_PATH = r"C:\Users\Dell'\AppData\Roaming\Python\Python312\Scripts\kaggle.exe"
 
 def download_dataset():
-    print("Downloading CICIDS2017 dataset from Kaggle...")
+    print("Downloading CICIDS2017 dataset...")
 
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(DATA_FOLDER, exist_ok=True)
 
-    try:
-        subprocess.run([
-            "kaggle", "datasets", "download",
-            "-d", "ericanacletoribeiro/cicids2017-cleaned-and-preprocessed",
-            "-p", "data",
-            "--unzip"
-        ], check=True)
+    subprocess.run([
+        KAGGLE_PATH,
+        "datasets", "download",
+        "-d", DATASET,
+        "-p", DATA_FOLDER,
+        "--unzip"
+    ], check=True)
 
-        print("Dataset downloaded successfully!")
+    print("Download complete!")
 
-    except subprocess.CalledProcessError:
-        print("Error: Kaggle CLI not configured.")
-        print("Please install Kaggle and add kaggle.json API key.")
-        sys.exit(1)
-
-
-if not os.path.exists(DATA_PATH):
+if __name__ == "__main__":
     download_dataset()
-else:
-    print("Dataset already exists. Skipping download.")
