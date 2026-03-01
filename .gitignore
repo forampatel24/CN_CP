@@ -1,0 +1,13 @@
+# Ignore dataset
+data/
+*.csv
+
+# Ignore trained models
+model/
+*.pkl
+
+# Ignore outputs
+output/
+
+# Python cache
+__pycache__/
