@@ -1,8 +1,8 @@
 import os
 import subprocess
 
-DATASET = "ericanacletoribeiro/cicids2017-cleaned-and-preprocessed"
-DATA_FOLDER = "data"
+DATASET = "sweety18/cicids2017-full-dataset"
+DATA_FOLDER = "CN_CP\data"
 
 KAGGLE_PATH = r"C:\Users\Dell'\AppData\Roaming\Python\Python312\Scripts\kaggle.exe"
 
