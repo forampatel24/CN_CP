@@ -10,52 +10,81 @@ DATASET_PATH = "data/combine.csv"
 MODEL_PATH = "model/attack_model.pkl"
 
 def load_dataset():
+
     df = pd.read_csv(DATASET_PATH, low_memory=False)
 
-    # Remove spaces in column names
+    # remove leading spaces
     df.columns = df.columns.str.strip()
 
+    # Strong feature set for attack detection
     features = [
-        'Destination Port',
-        'Flow Duration',
-        'Total Fwd Packets',
-        'Total Backward Packets',
-        'Flow Bytes/s',
-        'Flow Packets/s'
+
+        "Destination Port",
+        "Flow Duration",
+
+        "Total Fwd Packets",
+        "Total Backward Packets",
+
+        "Total Length of Fwd Packets",
+        "Total Length of Bwd Packets",
+
+        "Flow Bytes/s",
+        "Flow Packets/s",
+
+        "Packet Length Mean",
+        "Packet Length Std",
+
+        "Fwd Packet Length Mean",
+        "Bwd Packet Length Mean",
+
+        "FIN Flag Count",
+        "SYN Flag Count",
+        "RST Flag Count",
+        "PSH Flag Count",
+        "ACK Flag Count",
+
+        "Average Packet Size",
+
+        "Active Mean",
+        "Idle Mean"
     ]
 
-    # detect label column automatically
-    if 'Label' in df.columns:
-        label_col = 'Label'
-    elif 'Attack Type' in df.columns:
-        label_col = 'Attack Type'
+    # Detect label column
+    if "Label" in df.columns:
+        label_col = "Label"
     else:
-        raise Exception("No label column found")
+        raise Exception("Label column not found")
 
     df = df[features + [label_col]]
 
-    # convert feature columns to numeric
-    # convert feature columns to numeric
+    # Convert to numeric
     for col in features:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# remove infinity values (caused by divide by zero in dataset)
+    # Remove bad values
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df.dropna(inplace=True)
 
-# remove corrupted rows
-    df = df.dropna()
-
+    # Map CICIDS labels to your categories
     def map_attack(label):
+
         label = str(label).lower()
 
         if "benign" in label:
             return "Normal Traffic"
+
         elif "portscan" in label:
             return "Port Scan"
-        elif "brute" in label:
+
+        elif "brute" in label or "patator" in label:
             return "Brute Force"
+
         elif "dos" in label or "ddos" in label:
             return "Flooding"
+
+        elif "bot" in label:
+            return "Persistence"
+
         else:
             return "Normal Traffic"
 
@@ -68,6 +97,7 @@ def load_dataset():
 
 
 def train_model():
+
     X, y, features = load_dataset()
 
     le = LabelEncoder()
@@ -77,7 +107,13 @@ def train_model():
         X, y_encoded, test_size=0.2, random_state=42
     )
 
-    model = RandomForestClassifier(n_estimators=100)
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=15,
+        random_state=42,
+        n_jobs=-1
+    )
+
     model.fit(X_train, y_train)
 
     os.makedirs("model", exist_ok=True)
