@@ -4,13 +4,111 @@ import joblib
 import os
 
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report
+from imblearn.over_sampling import SMOTE
 
 
-DATASET_PATH = "data/combine.csv"
+DATASET_PATH = "data/cicids2017_cleaned.csv"
 MODEL_PATH = "model/attack_model.pkl"
+
+
+FEATURES = [
+
+"Destination Port",
+"Flow Duration",
+"Total Fwd Packets",
+"Total Length of Fwd Packets",
+
+"Fwd Packet Length Max",
+"Fwd Packet Length Min",
+"Fwd Packet Length Mean",
+"Fwd Packet Length Std",
+
+"Bwd Packet Length Max",
+"Bwd Packet Length Min",
+"Bwd Packet Length Mean",
+"Bwd Packet Length Std",
+
+"Flow Bytes/s",
+"Flow Packets/s",
+
+"Flow IAT Mean",
+"Flow IAT Std",
+"Flow IAT Max",
+"Flow IAT Min",
+
+"Fwd IAT Total",
+"Fwd IAT Mean",
+"Fwd IAT Std",
+"Fwd IAT Max",
+"Fwd IAT Min",
+
+"Bwd IAT Total",
+"Bwd IAT Mean",
+"Bwd IAT Std",
+"Bwd IAT Max",
+"Bwd IAT Min",
+
+"Fwd Header Length",
+"Bwd Header Length",
+
+"Fwd Packets/s",
+"Bwd Packets/s",
+
+"Min Packet Length",
+"Max Packet Length",
+"Packet Length Mean",
+"Packet Length Std",
+"Packet Length Variance",
+
+"FIN Flag Count",
+"PSH Flag Count",
+"ACK Flag Count",
+
+"Average Packet Size",
+
+"Subflow Fwd Bytes",
+
+"Init_Win_bytes_forward",
+"Init_Win_bytes_backward",
+
+"act_data_pkt_fwd",
+"min_seg_size_forward",
+
+"Active Mean",
+"Active Max",
+"Active Min",
+
+"Idle Mean",
+"Idle Max",
+"Idle Min"
+
+]
+
+
+def map_attack(attack):
+
+    attack = str(attack).lower()
+
+    if "benign" in attack:
+        return "Normal"
+
+    elif "dos" in attack or "ddos" in attack:
+        return "Flooding"
+
+    elif "portscan" in attack:
+        return "Port Scan"
+
+    elif "brute" in attack:
+        return "Brute Force"
+
+    elif "bot" in attack:
+        return "Persistence"
+
+    else:
+        return "Normal"
 
 
 def load_dataset():
@@ -19,134 +117,35 @@ def load_dataset():
 
     df = pd.read_csv(DATASET_PATH, low_memory=False)
 
-    # remove leading spaces in column names
     df.columns = df.columns.str.strip()
 
-    # Strong CICIDS feature set
-    features = [
+    df = df[FEATURES + ["Attack Type"]]
 
-        "Destination Port",
-        "Flow Duration",
-
-        "Total Fwd Packets",
-        "Total Backward Packets",
-
-        "Total Length of Fwd Packets",
-        "Total Length of Bwd Packets",
-
-        "Fwd Packet Length Max",
-        "Fwd Packet Length Min",
-        "Fwd Packet Length Mean",
-        "Fwd Packet Length Std",
-
-        "Bwd Packet Length Max",
-        "Bwd Packet Length Min",
-        "Bwd Packet Length Mean",
-        "Bwd Packet Length Std",
-
-        "Flow Bytes/s",
-        "Flow Packets/s",
-
-        "Flow IAT Mean",
-        "Flow IAT Std",
-        "Flow IAT Max",
-        "Flow IAT Min",
-
-        "Fwd IAT Total",
-        "Fwd IAT Mean",
-        "Fwd IAT Std",
-        "Fwd IAT Max",
-        "Fwd IAT Min",
-
-        "Bwd IAT Total",
-        "Bwd IAT Mean",
-        "Bwd IAT Std",
-        "Bwd IAT Max",
-        "Bwd IAT Min",
-
-        "Fwd Packets/s",
-        "Bwd Packets/s",
-
-        "Packet Length Mean",
-        "Packet Length Std",
-        "Packet Length Variance",
-
-        "FIN Flag Count",
-        "SYN Flag Count",
-        "RST Flag Count",
-        "PSH Flag Count",
-        "ACK Flag Count",
-
-        "Average Packet Size",
-
-        "Active Mean",
-        "Active Max",
-        "Active Min",
-
-        "Idle Mean",
-        "Idle Max",
-        "Idle Min"
-    ]
-
-    label_col = "Label"
-
-    print("Selecting features...")
-
-    df = df[features + [label_col]]
-
-    # Convert columns to numeric
-    for col in features:
+    for col in FEATURES:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Remove bad values
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
     df.dropna(inplace=True)
 
-    print("Mapping attack labels...")
+    df["Attack"] = df["Attack Type"].apply(map_attack)
 
-    def map_attack(label):
+    X = df[FEATURES]
 
-        label = str(label).lower()
-
-        if "benign" in label:
-            return "Normal Traffic"
-
-        elif "portscan" in label:
-            return "Port Scan"
-
-        elif "brute" in label or "patator" in label:
-            return "Brute Force"
-
-        elif "dos" in label or "ddos" in label:
-            return "Flooding"
-
-        elif "bot" in label:
-            return "Persistence"
-
-        else:
-            return "Normal Traffic"
-
-    df["Attack"] = df[label_col].apply(map_attack)
-
-    X = df[features]
     y = df["Attack"]
 
-    print("Dataset ready.")
-    print("Samples:", len(df))
-
-    return X, y, features
+    return X, y
 
 
 def train_model():
 
-    X, y, features = load_dataset()
-
-    print("Encoding labels...")
+    X, y = load_dataset()
 
     le = LabelEncoder()
+
     y_encoded = le.fit_transform(y)
 
-    print("Splitting dataset...")
+    print("Classes:", le.classes_)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -156,21 +155,30 @@ def train_model():
         random_state=42
     )
 
-    print("Training RandomForest model...")
+    scaler = StandardScaler()
+
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
+
+    smote = SMOTE(random_state=42)
+
+    X_train, y_train = smote.fit_resample(X_train, y_train)
 
     model = RandomForestClassifier(
-        n_estimators=400,
-        max_depth=25,
+        n_estimators=700,
+        max_depth=35,
         class_weight="balanced",
         random_state=42,
         n_jobs=-1
     )
 
+    print("Training model...")
+
     model.fit(X_train, y_train)
 
-    print("\nEvaluating model...\n")
-
     y_pred = model.predict(X_test)
+
+    print("\nClassification Report:\n")
 
     print(classification_report(
         y_test,
@@ -178,29 +186,19 @@ def train_model():
         target_names=le.classes_
     ))
 
-    # Feature importance
-    importance = pd.Series(
-        model.feature_importances_,
-        index=features
-    ).sort_values(ascending=False)
-
-    print("\nTop Important Features:\n")
-    print(importance.head(15))
-
-    print("\nSaving model...")
-
     os.makedirs("model", exist_ok=True)
 
     joblib.dump(
         {
             "model": model,
+            "scaler": scaler,
             "label_encoder": le,
-            "features": features
+            "features": FEATURES
         },
         MODEL_PATH
     )
 
-    print("\nModel successfully saved to:", MODEL_PATH)
+    print("\nModel saved to:", MODEL_PATH)
 
 
 if __name__ == "__main__":
