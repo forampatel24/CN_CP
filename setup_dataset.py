@@ -3,9 +3,6 @@ import subprocess
 import pandas as pd
 import numpy as np
 
-# -----------------------------
-# CONFIG
-# -----------------------------
 DATASET = "chethuhn/network-intrusion-dataset"
 DATA_FOLDER = "data"
 OUTPUT_FILE = "data/combined.csv"
@@ -14,91 +11,135 @@ KAGGLE_PATH = r"C:\Users\Dell'\AppData\Roaming\Python\Python312\Scripts\kaggle.e
 
 
 # -----------------------------
-# DOWNLOAD DATASET
+# Download dataset
 # -----------------------------
 def download_dataset():
-    print("Downloading CICIDS2017 dataset...")
 
     os.makedirs(DATA_FOLDER, exist_ok=True)
 
     subprocess.run([
         KAGGLE_PATH,
-        "datasets", "download",
-        "-d", DATASET,
-        "-p", DATA_FOLDER,
+        "datasets",
+        "download",
+        "-d",
+        DATASET,
+        "-p",
+        DATA_FOLDER,
         "--unzip"
     ], check=True)
 
-    print("Download complete!")
+
+# -----------------------------
+# Load dataset files
+# -----------------------------
+def load_and_concat():
+
+    # Loading the dataset
+    data1 = pd.read_csv(f"{DATA_FOLDER}/Monday-WorkingHours.pcap_ISCX.csv", low_memory=False)
+    data2 = pd.read_csv(f"{DATA_FOLDER}/Tuesday-WorkingHours.pcap_ISCX.csv", low_memory=False)
+    data3 = pd.read_csv(f"{DATA_FOLDER}/Wednesday-workingHours.pcap_ISCX.csv", low_memory=False)
+    data4 = pd.read_csv(f"{DATA_FOLDER}/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv", low_memory=False)
+    data5 = pd.read_csv(f"{DATA_FOLDER}/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv", low_memory=False)
+    data6 = pd.read_csv(f"{DATA_FOLDER}/Friday-WorkingHours-Morning.pcap_ISCX.csv", low_memory=False)
+    data7 = pd.read_csv(f"{DATA_FOLDER}/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv", low_memory=False)
+    data8 = pd.read_csv(f"{DATA_FOLDER}/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv", low_memory=False)
+
+    data_list = [data1, data2, data3, data4, data5, data6, data7, data8]
+
+    print('Data dimensions: ')
+    for i, data in enumerate(data_list, start=1):
+        rows, cols = data.shape
+        print(f'Data{i} -> {rows} rows, {cols} columns')
+
+    data = pd.concat(data_list)
+
+    rows, cols = data.shape
+
+    print('New dimension:')
+    print(f'Number of rows: {rows}')
+    print(f'Number of columns: {cols}')
+    print(f'Total cells: {rows * cols}')
+
+    # delete individual dfs
+    for d in data_list:
+        del d
+
+    return data
 
 
 # -----------------------------
-# LOAD AND MERGE CSV FILES
+# Cleaning dataset
 # -----------------------------
-def merge_csv_files():
-    print("Merging CSV files...")
+def clean_dataset(data):
 
-    csv_files = [
-        os.path.join(DATA_FOLDER, f)
-        for f in os.listdir(DATA_FOLDER)
-        if f.endswith(".csv")
-    ]
+    # Renaming the columns by removing whitespace
+    col_names = {col: col.strip() for col in data.columns}
+    data.rename(columns=col_names, inplace=True)
 
-    df_list = []
+    pd.options.display.max_rows = 80
 
-    for file in csv_files:
-        print("Loading:", file)
-        df = pd.read_csv(file, low_memory=False)
-        df_list.append(df)
+    print('Overview of Columns:')
+    print(data.describe().transpose())
 
-    df = pd.concat(df_list, ignore_index=True)
+    # duplicates
+    dups = data[data.duplicated()]
+    print(f'Number of duplicates: {len(dups)}')
 
-    print("Total rows:", len(df))
+    data.drop_duplicates(inplace=True)
 
-    return df
+    print("Shape after removing duplicates:", data.shape)
+
+    # missing values
+    missing_val = data.isna().sum()
+    print(missing_val.loc[missing_val > 0])
+
+    # infinity values
+    numeric_cols = data.select_dtypes(include=np.number).columns
+    inf_count = np.isinf(data[numeric_cols]).sum()
+
+    print(inf_count[inf_count > 0])
+
+    # replace infinite values
+    print(f'Initial missing values: {data.isna().sum().sum()}')
+
+    data.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+    print(f'Missing values after processing infinite values: {data.isna().sum().sum()}')
+
+    missing = data.isna().sum()
+
+    print(missing.loc[missing > 0])
+
+    # missing percentage
+    mis_per = (missing / len(data)) * 100
+
+    mis_table = pd.concat([missing, mis_per.round(2)], axis=1)
+
+    mis_table = mis_table.rename(columns={
+        0: 'Missing Values',
+        1: 'Percentage of Total Values'
+    })
+
+    print(mis_table.loc[mis_per > 0])
+
+    # -----------------------------
+    # REMOVE NaN rows
+    # -----------------------------
+    data.dropna(inplace=True)
+
+    print("\nShape after removing NaN rows:", data.shape)
+
+    return data
 
 
 # -----------------------------
-# PREPROCESS DATA
+# Save dataset
 # -----------------------------
-def preprocess(df):
+def save_dataset(data):
 
-    print("Cleaning dataset...")
+    data.to_csv(OUTPUT_FILE, index=False)
 
-    # Remove spaces in column names
-    df.columns = df.columns.str.strip()
-
-    # Replace infinite values
-    df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-    # Drop NaN rows
-    df.dropna(inplace=True)
-
-    print("Rows after cleaning:", len(df))
-
-    # Fix label column
-    if "Label" not in df.columns:
-        raise Exception("Label column not found!")
-
-    # Standardize labels
-    df["Label"] = df["Label"].str.strip()
-
-    print("Attack types found:")
-    print(df["Label"].value_counts())
-
-    return df
-
-
-# -----------------------------
-# SAVE DATASET
-# -----------------------------
-def save_dataset(df):
-
-    print("Saving processed dataset...")
-
-    df.to_csv(OUTPUT_FILE, index=False)
-
-    print("Dataset saved at:", OUTPUT_FILE)
+    print(f"\nDataset saved to {OUTPUT_FILE}")
 
 
 # -----------------------------
@@ -108,10 +149,8 @@ if __name__ == "__main__":
 
     download_dataset()
 
-    df = merge_csv_files()
+    data = load_and_concat()
 
-    df = preprocess(df)
+    data = clean_dataset(data)
 
-    save_dataset(df)
-
-    print("Dataset ready for model training!")
+    save_dataset(data)
