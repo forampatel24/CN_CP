@@ -9,6 +9,8 @@ print(df.shape)
 print("\nColumns:")
 print(len(df.columns))
 
+print(df.columns)
+
 print("\nUnique Labels:")
 print(df["Label"].unique())
 

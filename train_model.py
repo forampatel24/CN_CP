@@ -4,13 +4,12 @@ import joblib
 import os
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
-from imblearn.over_sampling import SMOTE
 
 
-DATASET_PATH = "data/cicids2017_cleaned.csv"
+DATASET_PATH = "data/combined.csv"
 MODEL_PATH = "model/attack_model.pkl"
 
 
@@ -88,27 +87,12 @@ FEATURES = [
 ]
 
 
-def map_attack(attack):
-
-    attack = str(attack).lower()
-
-    if "benign" in attack:
-        return "Normal"
-
-    elif "dos" in attack or "ddos" in attack:
-        return "Flooding"
-
-    elif "portscan" in attack:
-        return "Port Scan"
-
-    elif "brute" in attack:
-        return "Brute Force"
-
-    elif "bot" in attack:
-        return "Persistence"
-
-    else:
-        return "Normal"
+# attacks to ignore
+REMOVE_ATTACKS = [
+    "Heartbleed",
+    "Web Attack � Sql Injection",
+    "Infiltration"
+]
 
 
 def load_dataset():
@@ -119,20 +103,31 @@ def load_dataset():
 
     df.columns = df.columns.str.strip()
 
-    df = df[FEATURES + ["Attack Type"]]
+    # remove rare attacks
+    df = df[~df["Label"].isin(REMOVE_ATTACKS)]
 
+    print("\nRemaining attacks:")
+    print(df["Label"].value_counts())
+
+    # keep only required features
+    df = df[FEATURES + ["Label"]]
+
+    # convert to numeric
     for col in FEATURES:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
     df.dropna(inplace=True)
 
-    df["Attack"] = df["Attack Type"].apply(map_attack)
+    # OPTIONAL: sample dataset for faster training
+    SAMPLE_SIZE = 500000
+
+    if len(df) > SAMPLE_SIZE:
+        print("\nSampling dataset for faster training...")
+        df = df.sample(SAMPLE_SIZE, random_state=42)
 
     X = df[FEATURES]
-
-    y = df["Attack"]
+    y = df["Label"]
 
     return X, y
 
@@ -145,7 +140,8 @@ def train_model():
 
     y_encoded = le.fit_transform(y)
 
-    print("Classes:", le.classes_)
+    print("\nClasses detected:")
+    print(le.classes_)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -155,24 +151,15 @@ def train_model():
         random_state=42
     )
 
-    scaler = StandardScaler()
-
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-
-    smote = SMOTE(random_state=42)
-
-    X_train, y_train = smote.fit_resample(X_train, y_train)
-
     model = RandomForestClassifier(
-        n_estimators=700,
-        max_depth=35,
+        n_estimators=400,
+        max_depth=None,
         class_weight="balanced",
         random_state=42,
         n_jobs=-1
     )
 
-    print("Training model...")
+    print("\nTraining Random Forest...")
 
     model.fit(X_train, y_train)
 
@@ -191,7 +178,6 @@ def train_model():
     joblib.dump(
         {
             "model": model,
-            "scaler": scaler,
             "label_encoder": le,
             "features": FEATURES
         },

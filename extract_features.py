@@ -1,7 +1,6 @@
 import pyshark
 import pandas as pd
 import numpy as np
-from collections import defaultdict
 
 
 def extract_features(pcap_file):
@@ -14,7 +13,6 @@ def extract_features(pcap_file):
 
     packet_times = []
     packet_lengths = []
-
     ports = set()
 
     fwd_packets = 0
@@ -25,7 +23,6 @@ def extract_features(pcap_file):
 
     syn_count = 0
     ack_count = 0
-    rst_count = 0
     fin_count = 0
     psh_count = 0
 
@@ -59,8 +56,6 @@ def extract_features(pcap_file):
                     syn_count += 1
                 if packet.tcp.flags_ack == "1":
                     ack_count += 1
-                if packet.tcp.flags_rst == "1":
-                    rst_count += 1
                 if packet.tcp.flags_fin == "1":
                     fin_count += 1
                 if packet.tcp.flags_push == "1":
@@ -70,6 +65,12 @@ def extract_features(pcap_file):
             continue
 
     cap.close()
+
+    # -----------------------------
+    # Basic derived statistics
+    # -----------------------------
+
+    unique_ports = len(ports)
 
     if len(packet_times) > 1:
         duration = (max(packet_times) - min(packet_times)).total_seconds()
@@ -87,72 +88,109 @@ def extract_features(pcap_file):
 
     packet_mean = np.mean(packet_lengths) if packet_lengths else 0
     packet_std = np.std(packet_lengths) if packet_lengths else 0
+    packet_var = np.var(packet_lengths) if packet_lengths else 0
 
-    fwd_mean = fwd_bytes / fwd_packets if fwd_packets > 0 else 0
-    bwd_mean = bwd_bytes / bwd_packets if bwd_packets > 0 else 0
+    min_pkt = min(packet_lengths) if packet_lengths else 0
+    max_pkt = max(packet_lengths) if packet_lengths else 0
 
-    avg_packet_size = total_bytes / total_packets if total_packets > 0 else 0
+    avg_packet_size = total_bytes / total_packets if total_packets else 0
 
-    # ----------------------------
-    # ML Feature Vector (MATCH TRAIN MODEL)
-    # ----------------------------
+    fwd_mean = fwd_bytes / fwd_packets if fwd_packets else 0
+    bwd_mean = bwd_bytes / bwd_packets if bwd_packets else 0
+
+    # -----------------------------
+    # Inter-arrival times
+    # -----------------------------
+
+    if len(packet_times) > 1:
+        iat = np.diff([t.timestamp() for t in packet_times])
+        flow_iat_mean = np.mean(iat)
+        flow_iat_std = np.std(iat)
+        flow_iat_max = np.max(iat)
+        flow_iat_min = np.min(iat)
+    else:
+        flow_iat_mean = flow_iat_std = flow_iat_max = flow_iat_min = 0
+
+    # -----------------------------
+    # Build feature vector
+    # -----------------------------
 
     features = {
 
-        "Destination Port": list(ports)[0] if ports else 0,
+        "Destination Port": np.mean(list(ports)) if ports else 0,
 
         "Flow Duration": duration,
 
-        "Total Fwd Packets": fwd_packets,
-
-        "Total Backward Packets": bwd_packets,
-
+        "Total Fwd Packets": fwd_packets + unique_ports,
         "Total Length of Fwd Packets": fwd_bytes,
 
-        "Total Length of Bwd Packets": bwd_bytes,
+        "Fwd Packet Length Max": max_pkt,
+        "Fwd Packet Length Min": min_pkt,
+        "Fwd Packet Length Mean": fwd_mean,
+        "Fwd Packet Length Std": packet_std,
+
+        "Bwd Packet Length Max": max_pkt,
+        "Bwd Packet Length Min": min_pkt,
+        "Bwd Packet Length Mean": bwd_mean,
+        "Bwd Packet Length Std": packet_std,
 
         "Flow Bytes/s": byte_rate,
-
         "Flow Packets/s": packet_rate,
 
+        "Flow IAT Mean": flow_iat_mean,
+        "Flow IAT Std": flow_iat_std,
+        "Flow IAT Max": flow_iat_max,
+        "Flow IAT Min": flow_iat_min,
+
+        "Fwd IAT Total": duration,
+        "Fwd IAT Mean": duration / fwd_packets if fwd_packets else 0,
+        "Fwd IAT Std": 0,
+        "Fwd IAT Max": duration,
+        "Fwd IAT Min": 0,
+
+        "Bwd IAT Total": duration,
+        "Bwd IAT Mean": duration / bwd_packets if bwd_packets else 0,
+        "Bwd IAT Std": 0,
+        "Bwd IAT Max": duration,
+        "Bwd IAT Min": 0,
+
+        "Fwd Header Length": 0,
+        "Bwd Header Length": 0,
+
+        "Fwd Packets/s": fwd_packets / duration if duration else 0,
+        "Bwd Packets/s": bwd_packets / duration if duration else 0,
+
+        "Min Packet Length": min_pkt,
+        "Max Packet Length": max_pkt,
         "Packet Length Mean": packet_mean,
-
         "Packet Length Std": packet_std,
-
-        "Fwd Packet Length Mean": fwd_mean,
-
-        "Bwd Packet Length Mean": bwd_mean,
+        "Packet Length Variance": packet_var,
 
         "FIN Flag Count": fin_count,
-
-        "SYN Flag Count": syn_count,
-
-        "RST Flag Count": rst_count,
-
         "PSH Flag Count": psh_count,
-
         "ACK Flag Count": ack_count,
 
         "Average Packet Size": avg_packet_size,
 
+        "Subflow Fwd Bytes": fwd_bytes,
+
+        "Init_Win_bytes_forward": 0,
+        "Init_Win_bytes_backward": 0,
+
+        "act_data_pkt_fwd": fwd_packets,
+        "min_seg_size_forward": min_pkt,
+
         "Active Mean": duration,
+        "Active Max": duration,
+        "Active Min": duration,
 
-        "Idle Mean": 0
+        "Idle Mean": 0,
+        "Idle Max": 0,
+        "Idle Min": 0
     }
 
-    statistics = {
+    # Additional features for behavioral detection
+    features["Unique Ports"] = unique_ports
+    features["Packet Count"] = total_packets
 
-        "unique_ports": len(ports),
-        "packet_rate": packet_rate,
-        "total_packets": total_packets,
-        "duration": duration,
-        "start_time": min(packet_times) if packet_times else "Unknown",
-        "end_time": max(packet_times) if packet_times else "Unknown",
-        "source_ip": src_ip if src_ip else "Unknown",
-        "ssh_attempts": sum(1 for p in ports if p == 22),
-        "syn_count": syn_count,
-
-        "ack_count": ack_count
-    }
-
-    return pd.DataFrame([features]), statistics
+    return pd.DataFrame([features])
