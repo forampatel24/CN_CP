@@ -60,14 +60,22 @@ def analyze_pcap(pcap_file):
         print(f"{attack}  ->  {round(score*100,2)} %")
 
     # Remove benign when attacks exist
+    # -----------------------------
+# Final Decision Logic
+# -----------------------------
+
+    benign_score = attacks.get("BENIGN", 0)
+
+# find strongest attack
     attack_scores = {k: v for k, v in attacks.items() if k != "BENIGN"}
+    top_attack = max(attack_scores, key=attack_scores.get)
+    top_attack_score = attack_scores[top_attack]
 
-    if attack_scores:
-        predicted = max(attack_scores, key=attack_scores.get)
-    else:
+# Decision rule
+    if benign_score > 0.85 and top_attack_score < 0.60:
         predicted = "BENIGN"
-
-    print("\nPredicted Attack Type:", predicted)
+    else:
+        predicted = top_attack
 
 
 # -----------------------------
