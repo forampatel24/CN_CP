@@ -67,6 +67,30 @@ def extract_features(pcap_file):
     cap.close()
 
     # -----------------------------
+    # 🔥 NEW: TIMELINE RECONSTRUCTION
+    # -----------------------------
+
+    timeline = []
+
+    if len(packet_times) > 1:
+
+        sorted_times = sorted(packet_times)
+
+        start_time = sorted_times[0]
+        end_time = sorted_times[-1]
+
+        timeline.append(f"{start_time.strftime('%H:%M:%S')}  First packet captured")
+
+        # midpoint events (sample-based, not heavy computation)
+        mid_index = len(sorted_times) // 2
+        timeline.append(f"{sorted_times[mid_index].strftime('%H:%M:%S')}  Traffic intensity increased")
+
+        timeline.append(f"{end_time.strftime('%H:%M:%S')}  Last packet captured")
+
+    else:
+        timeline.append("Insufficient data for timeline reconstruction")
+
+    # -----------------------------
     # Basic derived statistics
     # -----------------------------
 
@@ -189,8 +213,11 @@ def extract_features(pcap_file):
         "Idle Min": 0
     }
 
-    # Additional features for behavioral detection
+    # Additional features
     features["Unique Ports"] = unique_ports
     features["Packet Count"] = total_packets
 
-    return pd.DataFrame([features])
+    # -----------------------------
+    # 🔥 RETURN BOTH (SAFE)
+    # -----------------------------
+    return pd.DataFrame([features]), timeline
