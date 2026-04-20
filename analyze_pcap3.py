@@ -253,9 +253,6 @@ def analyze_pcap(pcap_file):
             for p in details["precautions"]:
                 report.append(f"- {p}")
 
-            report.append("\nConclusion:")
-            report.append(details["conclusion"])
-
             report.append("\n" + "-" * 50)
 
     report.append("\nTimeline:")
